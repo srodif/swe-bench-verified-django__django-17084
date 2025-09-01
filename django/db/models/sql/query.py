@@ -436,6 +436,10 @@ class Query(BaseExpression):
             )
             or having
         )
+        has_window_functions = any(
+            getattr(annotation, "contains_over_clause", False)
+            for annotation in self.annotations.values()
+        )
         # Decide if we need to use a subquery.
         #
         # Existing aggregations would cause incorrect results as
@@ -450,6 +454,7 @@ class Query(BaseExpression):
             isinstance(self.group_by, tuple)
             or self.is_sliced
             or has_existing_aggregation
+            or has_window_functions
             or refs_subquery
             or qualify
             or self.distinct
@@ -472,8 +477,8 @@ class Query(BaseExpression):
                 # aggregate annotations, then we must make sure the inner
                 # query is grouped by the main model's primary key. However,
                 # clearing the select clause can alter results if distinct is
-                # used.
-                if inner_query.default_cols and has_existing_aggregation:
+                # used. Don't group by primary key if we only have window functions.
+                if inner_query.default_cols and has_existing_aggregation and not has_window_functions:
                     inner_query.group_by = (
                         self.model._meta.pk.get_col(inner_query.get_initial_alias()),
                     )
